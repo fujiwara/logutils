@@ -3,8 +3,11 @@ package logutils
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"sync"
+
+	"github.com/fatih/color"
 )
 
 type LogLevel string
@@ -19,6 +22,9 @@ type LevelFilter struct {
 	// severity. Example might be: {"DEBUG", "WARN", "ERROR"}.
 	Levels []LogLevel
 
+	// Colors is the list of github.com/fatih/color.Color to use for each log level.
+	Colors []color.Color
+
 	// MinLevel is the minimum level allowed through
 	MinLevel LogLevel
 
@@ -26,13 +32,19 @@ type LevelFilter struct {
 	// will be set.
 	Writer io.Writer
 
-	badLevels map[LogLevel]struct{}
-	once      sync.Once
+	printers map[LogLevel]printer
+	once     sync.Once
 }
+
+type printer func(io.Writer, ...interface{}) (int, error)
 
 // Check will check a given line if it would be included in the level
 // filter.
 func (f *LevelFilter) Check(line []byte) bool {
+	return f.Printer(line) != nil
+}
+
+func (f *LevelFilter) Printer(line []byte) printer {
 	f.once.Do(f.init)
 
 	// Check for a log level
@@ -45,8 +57,7 @@ func (f *LevelFilter) Check(line []byte) bool {
 		}
 	}
 
-	_, ok := f.badLevels[level]
-	return !ok
+	return f.printers[level]
 }
 
 func (f *LevelFilter) Write(p []byte) (n int, err error) {
@@ -56,11 +67,10 @@ func (f *LevelFilter) Write(p []byte) (n int, err error) {
 	// this method, assuming we're dealing with a single, complete line
 	// of log data.
 
-	if !f.Check(p) {
-		return len(p), nil
+	if pr := f.Printer(p); pr != nil {
+		return pr(f.Writer, string(p))
 	}
-
-	return f.Writer.Write(p)
+	return len(p), nil
 }
 
 // SetMinLevel is used to update the minimum log level
@@ -70,12 +80,27 @@ func (f *LevelFilter) SetMinLevel(min LogLevel) {
 }
 
 func (f *LevelFilter) init() {
-	badLevels := make(map[LogLevel]struct{})
-	for _, level := range f.Levels {
-		if level == f.MinLevel {
-			break
+	printers := make(map[LogLevel]printer, len(f.Levels))
+	minLevelIndex := -1
+	for i, level := range f.Levels {
+		if i < len(f.Colors) {
+			printers[level] = f.Colors[i].Fprint
+		} else {
+			printers[level] = fmt.Fprint
 		}
-		badLevels[level] = struct{}{}
+		if level == f.MinLevel {
+			minLevelIndex = i
+		}
 	}
-	f.badLevels = badLevels
+	f.printers = printers
+	if minLevelIndex == -1 {
+		return
+	}
+	for i, level := range f.Levels {
+		if i < minLevelIndex {
+			delete(f.printers, level)
+		} else {
+			return
+		}
+	}
 }
