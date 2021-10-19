@@ -3,12 +3,11 @@ package logutils
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"sync"
-
-	"github.com/fatih/color"
 )
+
+type ModifierFunc func([]byte) []byte
 
 type LogLevel string
 
@@ -22,8 +21,8 @@ type LevelFilter struct {
 	// severity. Example might be: {"DEBUG", "WARN", "ERROR"}.
 	Levels []LogLevel
 
-	// Colors is the list of github.com/fatih/color.Color to use for each log level.
-	Colors []color.Color
+	// ModifierFuncs is the list of modifier functions to apply to each log lines.
+	ModifierFuncs []ModifierFunc
 
 	// MinLevel is the minimum level allowed through
 	MinLevel LogLevel
@@ -32,19 +31,18 @@ type LevelFilter struct {
 	// will be set.
 	Writer io.Writer
 
-	printers map[LogLevel]printer
-	once     sync.Once
+	modifierFuncs map[LogLevel]ModifierFunc
+	once          sync.Once
 }
-
-type printer func(io.Writer, ...interface{}) (int, error)
 
 // Check will check a given line if it would be included in the level
 // filter.
 func (f *LevelFilter) Check(line []byte) bool {
-	return f.Printer(line) != nil
+	_, ok := f.getModifierFunc(line)
+	return ok
 }
 
-func (f *LevelFilter) Printer(line []byte) printer {
+func (f *LevelFilter) getModifierFunc(line []byte) (ModifierFunc, bool) {
 	f.once.Do(f.init)
 
 	// Check for a log level
@@ -57,7 +55,8 @@ func (f *LevelFilter) Printer(line []byte) printer {
 		}
 	}
 
-	return f.printers[level]
+	mf, ok := f.modifierFuncs[level]
+	return mf, ok
 }
 
 func (f *LevelFilter) Write(p []byte) (n int, err error) {
@@ -67,10 +66,17 @@ func (f *LevelFilter) Write(p []byte) (n int, err error) {
 	// this method, assuming we're dealing with a single, complete line
 	// of log data.
 
-	if pr := f.Printer(p); pr != nil {
-		return pr(f.Writer, string(p))
+	mf, ok := f.getModifierFunc(p)
+	if !ok {
+		// disabled log level
+		return len(p), nil
 	}
-	return len(p), nil
+	if mf != nil {
+		return f.Writer.Write(mf(p))
+	} else {
+		// default
+		return f.Writer.Write(p)
+	}
 }
 
 // SetMinLevel is used to update the minimum log level
@@ -80,25 +86,25 @@ func (f *LevelFilter) SetMinLevel(min LogLevel) {
 }
 
 func (f *LevelFilter) init() {
-	printers := make(map[LogLevel]printer, len(f.Levels))
+	mfuncs := make(map[LogLevel]ModifierFunc, len(f.Levels))
 	minLevelIndex := -1
 	for i, level := range f.Levels {
-		if i < len(f.Colors) {
-			printers[level] = f.Colors[i].Fprint
+		if i < len(f.ModifierFuncs) {
+			mfuncs[level] = f.ModifierFuncs[i]
 		} else {
-			printers[level] = fmt.Fprint
+			mfuncs[level] = nil
 		}
 		if level == f.MinLevel {
 			minLevelIndex = i
 		}
 	}
-	f.printers = printers
+	f.modifierFuncs = mfuncs
 	if minLevelIndex == -1 {
 		return
 	}
 	for i, level := range f.Levels {
 		if i < minLevelIndex {
-			delete(f.printers, level)
+			delete(f.modifierFuncs, level)
 		} else {
 			return
 		}

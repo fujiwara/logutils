@@ -35,3 +35,19 @@ func BenchmarkLevelFilter(b *testing.B) {
 		filter.Write(messages[i%len(messages)])
 	}
 }
+
+func BenchmarkLevelFilterWithModifier(b *testing.B) {
+	var m = func(b []byte) []byte { return b }
+
+	filter := &LevelFilter{
+		Levels:        []LogLevel{"TRACE", "DEBUG", "INFO", "WARN", "ERROR"},
+		ModifierFuncs: []ModifierFunc{m, m, m, m, m},
+		MinLevel:      "WARN",
+		Writer:        ioutil.Discard,
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		filter.Write(messages[i%len(messages)])
+	}
+}
