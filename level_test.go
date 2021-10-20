@@ -24,9 +24,10 @@ func TestLevelFilter(t *testing.T) {
 	logger.Println("[ERROR] bar")
 	logger.Println("[DEBUG] baz")
 	logger.Println("[WARN] buzz")
+	logger.Println("foobarbaz")
 
 	result := buf.String()
-	expected := "[WARN] foo\n[ERROR] bar\n[WARN] buzz\n"
+	expected := "[WARN] foo\n[ERROR] bar\n[WARN] buzz\nfoobarbaz\n"
 	if result != expected {
 		t.Fatalf("bad: %#v", result)
 	}

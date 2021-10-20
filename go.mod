@@ -1,4 +1,4 @@
-module github.com/hashicorp/logutils
+module github.com/fujiwara/logutils
 
 go 1.17
 
