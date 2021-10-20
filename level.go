@@ -86,7 +86,8 @@ func (f *LevelFilter) SetMinLevel(min LogLevel) {
 }
 
 func (f *LevelFilter) init() {
-	mfuncs := make(map[LogLevel]ModifierFunc, len(f.Levels))
+	mfuncs := make(map[LogLevel]ModifierFunc, len(f.Levels)+1)
+	mfuncs[LogLevel("")] = nil // default
 	minLevelIndex := -1
 	for i, level := range f.Levels {
 		if i < len(f.ModifierFuncs) {
