@@ -3,6 +3,8 @@ package logutils
 import (
 	"io/ioutil"
 	"testing"
+
+	"github.com/fatih/color"
 )
 
 var messages [][]byte
@@ -44,6 +46,26 @@ func BenchmarkLevelFilterWithModifier(b *testing.B) {
 		ModifierFuncs: []ModifierFunc{m, m, m, m, m},
 		MinLevel:      "WARN",
 		Writer:        ioutil.Discard,
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		filter.Write(messages[i%len(messages)])
+	}
+}
+
+func BenchmarkFilterWithColor(b *testing.B) {
+	filter := &LevelFilter{
+		Levels: []LogLevel{"TRACE", "DEBUG", "INFO", "WARN", "ERROR"},
+		ModifierFuncs: []ModifierFunc{
+			Color(color.FgBlack),
+			Color(color.FgBlack),
+			Color(color.FgBlue),
+			Color(color.FgYellow),
+			Color(color.FgRed, color.BgBlack),
+		},
+		MinLevel: "WARN",
+		Writer:   ioutil.Discard,
 	}
 
 	b.ResetTimer()
