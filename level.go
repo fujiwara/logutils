@@ -31,8 +31,13 @@ type LevelFilter struct {
 	// will be set.
 	Writer io.Writer
 
-	modifierFuncs map[LogLevel]ModifierFunc
-	once          sync.Once
+	modifiers map[LogLevel]*modifier
+	once      sync.Once
+}
+
+type modifier struct {
+	fn      ModifierFunc
+	enabled bool
 }
 
 // Check will check a given line if it would be included in the level
@@ -48,15 +53,18 @@ func (f *LevelFilter) getModifierFunc(line []byte) (ModifierFunc, bool) {
 	// Check for a log level
 	var level LogLevel
 	x := bytes.IndexByte(line, '[')
-	if x >= 0 {
+	if x == 0 {
 		y := bytes.IndexByte(line[x:], ']')
 		if y >= 0 {
 			level = LogLevel(line[x+1 : x+y])
 		}
 	}
-
-	mf, ok := f.modifierFuncs[level]
-	return mf, ok
+	mf, ok := f.modifiers[level]
+	if !ok {
+		// no modifier for this level, use default
+		return nil, true
+	}
+	return mf.fn, mf.enabled
 }
 
 func (f *LevelFilter) Write(p []byte) (n int, err error) {
@@ -66,9 +74,8 @@ func (f *LevelFilter) Write(p []byte) (n int, err error) {
 	// this method, assuming we're dealing with a single, complete line
 	// of log data.
 
-	mf, ok := f.getModifierFunc(p)
-	if !ok {
-		// disabled log level
+	mf, enabled := f.getModifierFunc(p)
+	if !enabled {
 		return len(p), nil
 	}
 	if mf != nil {
@@ -86,26 +93,32 @@ func (f *LevelFilter) SetMinLevel(min LogLevel) {
 }
 
 func (f *LevelFilter) init() {
-	mfuncs := make(map[LogLevel]ModifierFunc, len(f.Levels)+1)
-	mfuncs[LogLevel("")] = nil // default
+	mfuncs := make(map[LogLevel]*modifier, len(f.Levels)+1)
 	minLevelIndex := -1
 	for i, level := range f.Levels {
 		if i < len(f.ModifierFuncs) {
-			mfuncs[level] = f.ModifierFuncs[i]
+			mfuncs[level] = &modifier{
+				fn:      f.ModifierFuncs[i],
+				enabled: true,
+			}
 		} else {
-			mfuncs[level] = nil
+			mfuncs[level] = &modifier{
+				fn:      nil,
+				enabled: true,
+			}
 		}
 		if level == f.MinLevel {
 			minLevelIndex = i
 		}
 	}
-	f.modifierFuncs = mfuncs
+	f.modifiers = mfuncs
 	if minLevelIndex == -1 {
 		return
 	}
 	for i, level := range f.Levels {
 		if i < minLevelIndex {
-			delete(f.modifierFuncs, level)
+			// disable
+			f.modifiers[level].enabled = false
 		} else {
 			return
 		}
