@@ -35,6 +35,30 @@ func TestLevelFilter(t *testing.T) {
 	}
 }
 
+func TestLevelFilterWithPrefix(t *testing.T) {
+	buf := new(bytes.Buffer)
+	filter := &LevelFilter{
+		Levels:   []LogLevel{"DEBUG", "WARN", "ERROR"},
+		MinLevel: "WARN",
+		Writer:   buf,
+	}
+
+	logger := log.New(filter, "prefix ", 0)
+	logger.Print("[WARN] foo")
+	logger.Println("[ERROR] bar")
+	logger.Println("[DEBUG] baz")
+	logger.Println("[WARN] buzz")
+	logger.Println("foobarbaz")
+	logger.Println("[xxxx] foobarbaz")
+	logger.Println(`{"foo":["bar","baz"]}`)
+
+	result := buf.String()
+	expected := "prefix [WARN] foo\nprefix [ERROR] bar\nprefix [WARN] buzz\nprefix foobarbaz\nprefix [xxxx] foobarbaz\nprefix {\"foo\":[\"bar\",\"baz\"]}\n"
+	if result != expected {
+		t.Fatalf("expected: %#v, bad: %#v", expected, result)
+	}
+}
+
 func TestLevelFilterCheck(t *testing.T) {
 	filter := &LevelFilter{
 		Levels:   []LogLevel{"DEBUG", "WARN", "ERROR"},
