@@ -53,7 +53,7 @@ func (f *LevelFilter) getModifierFunc(line []byte) (ModifierFunc, bool) {
 	// Check for a log level
 	var level LogLevel
 	x := bytes.IndexByte(line, '[')
-	if x == 0 {
+	if x >= 0 {
 		y := bytes.IndexByte(line[x:], ']')
 		if y >= 0 {
 			level = LogLevel(line[x+1 : x+y])
